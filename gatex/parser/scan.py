@@ -1,8 +1,31 @@
-from typing import Callable
+from typing import Callable, List
 
 from gatex.parser.symbol import TAG_START_SYMBOL, TAG_NAME, TAG_END_SYMBOL
 from gatex.parser.stack import CONTENT_STACK, TAG_STACK, NO_STEP_REG
 from gatex.parser.symbol import isNestedSymbolStarter, isOverLengthThanNestedSymbolStart
+
+"""
+digraph G {
+
+  start -> TAG_START;
+  TAG_START->TAG_NAME;
+  TAG_NAME->TAG_END;
+  TAG_END->NESTED_START;
+  TAG_END->CONTENT;
+  NESTED_START->CONTENT;
+  CONTENT->NESTED_END;
+  CONTENT->TAG_START;
+  NESTED_END->TAG_START;
+  TAG_START->stop;
+  TAG_NAME->stop;
+  TAG_END->stop;
+  NESTED_START->stop;
+  NESTED_END->stop;
+  
+  start [shape=Mdiamond];
+  stop [shape=Msquare];
+}
+"""
 
 
 class Scanner(object):
@@ -27,7 +50,7 @@ class Scanner(object):
         dfa = Parse(StartState(), self.eat)
         dfa.run()
         for state in dfa.transit_list:
-            print(state.name, ":", state.content)
+            print(state)
 
 
 class State(object):
@@ -42,13 +65,13 @@ class State(object):
         return self
 
     def __repr__(self):
-        return "STATE: {}".format(self.name)
+        return "{}: {}".format(self.name, self.content)
 
 
 class StopState(State):
     name = "STOP"
 
-    def transit(self) -> object:
+    def transit(self) -> State:
         if CONTENT_STACK.content != "":
             raise Exception("parser failed: {}".format(CONTENT_STACK.content))
         return None
@@ -58,14 +81,14 @@ class StartState(State):
     # initial or start state q0
     name = "Start"
 
-    def transit(self) -> object:
+    def transit(self) -> State:
         return TagStart()
 
 
 class TagStart(State):
     name = "TagStart"
 
-    def transit(self) -> object:
+    def transit(self) -> State:
         if CONTENT_STACK.content in TAG_START_SYMBOL:
             self.content = CONTENT_STACK.pop_all()
             TAG_STACK.append(self.content)
@@ -79,7 +102,7 @@ class TagStart(State):
 class TagReadName(State):
     name = "Tag"
 
-    def transit(self) -> object:
+    def transit(self) -> State:
         if CONTENT_STACK.content in TAG_NAME:
             self.content = CONTENT_STACK.pop_all()
             return TagEnd()
@@ -92,7 +115,7 @@ class TagReadName(State):
 class TagEnd(State):
     name = "TagEnd"
 
-    def transit(self) -> object:
+    def transit(self) -> State:
         if CONTENT_STACK.content in TAG_END_SYMBOL:
             if TAG_STACK[-1] != CONTENT_STACK.content:
                 return StopState()
@@ -129,6 +152,10 @@ class NestedTagReadName(State):
             pass
 
 
+class NestedTagEnd(State):
+    pass
+
+
 class Content(State):
     name = "Content"
 
@@ -151,7 +178,8 @@ class Parse(object):
         self.current = self.init
         self.eat_function = eat
 
-        self.transit_list = []
+        self.transit_list: List[State] = []
+        self.transit_list.append(self.init)
 
     def run(self):
         while True:
@@ -163,8 +191,6 @@ class Parse(object):
             self.eat_function()
 
     def save(self):
-        # TODO BUILD CONTENT TREE
-        if not len(self.transit_list):
-            self.transit_list.append(self.current)
-        elif self.transit_list[-1].name != self.current.name:
+        # TODO BUILD AST
+        if self.transit_list[-1].name != self.current.name:
             self.transit_list.append(self.current)

@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, MutableMapping, Any
 import toml
 
 from gatex.formatter.base import BaseFormatter
@@ -35,7 +35,7 @@ class TomlParserException(Exception):
     pass
 
 
-def load(filename: str) -> dict:
+def load(filename: str) -> MutableMapping[str, Any]:
     if not os.path.exists(filename):
         raise TomlParserException("toml file not found: {}".format(filename))
     try:
@@ -44,7 +44,7 @@ def load(filename: str) -> dict:
         raise TomlParserException("load toml file failed: {}".format(e))
 
 
-def cook(toml_dict: dict) -> List[object]:
+def cook(toml_dict: dict) -> List[type]:
     objs = []
     for tag, prop in toml_dict.items():
         try:
