@@ -34,3 +34,6 @@ class BoolReg(object):
 CONTENT_STACK = ContentStack()
 TAG_STACK = Stack()
 NO_STEP_REG = BoolReg()
+NO_SAVE_REG = BoolReg()
+FORCE_SAVE_REG = BoolReg()
+SPACE_EAT_REG = BoolReg()

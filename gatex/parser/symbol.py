@@ -1,9 +1,9 @@
 TAG_START_SYMBOL = ["\\"]
-TAG_END_SYMBOL = ["\\"]
+TAG_END_SYMBOL = ["\\ ", "\\"]
 
-BLOCK_SYMBOL = [("{", "}")]
+BLOCK_SYMBOL = [(" {", "}"), ("{", "}")]
 
-MARK_SYMBOL = ["#", "*"]
+MARK_SYMBOL = ["# ", "#", "* ", "*"]
 
 TAG_NAME = ["TITTLE"]
 
@@ -67,9 +67,16 @@ def is_tag_name(s: str):
 def is_block_start(s: str):
     if len(s) > len(sorted(BLOCK_SYMBOL, key=lambda x: len(x[0]))[-1]):
         return False, "OVER_MAX_LENGTH"
+    possible = False
+    s_length = len(s)
     for sym in BLOCK_SYMBOL:
         if s == sym[0]:
             return True, ""
+        if not possible:
+            if s[:s_length] == sym[0][:s_length]:
+                possible = True
+    if possible:
+        return False, POSSIBLE
     return False, "NOT_MATCH"
 
 
@@ -78,10 +85,23 @@ def is_block_start(s: str):
 def is_block_end(s: str):
     if len(s) > len(sorted(BLOCK_SYMBOL, key=lambda x: len(x[1]))[-1]):
         return False, "OVER_MAX_LENGTH"
+    possible = False
+    s_length = len(s)
     for sym in BLOCK_SYMBOL:
         if s == sym[1]:
             return True, ""
+        if not possible:
+            if s[:s_length] == sym[1][:s_length]:
+                possible = True
+    if possible:
+        return False, POSSIBLE
     return False, "NOT_MATCH"
+
+
+def block_closed_check(s: str) -> str:
+    for sym in BLOCK_SYMBOL:
+        if s == sym[1]:
+            return sym[0]
 
 
 # MARK *
