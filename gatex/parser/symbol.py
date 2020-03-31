@@ -1,33 +1,33 @@
 TAG_START_SYMBOL = ["\\"]
 TAG_END_SYMBOL = ["\\"]
 
-NESTED_SYMBOL = [("{", "}")]
+BLOCK_SYMBOL = [("{", "}")]
+
+MARK_SYMBOL = ["#", "*"]
 
 TAG_NAME = ["TITTLE"]
 
-
-def isNestedSymbolStarter(s: str) -> bool:
-    for nested_symbol_pair in NESTED_SYMBOL:
-        if nested_symbol_pair[0] == s:
-            return True
-    return False
-
-
-def isOverLengthThanNestedSymbolStart(s: str) -> bool:
-    if len(s) > len(sorted(NESTED_SYMBOL, key=lambda x: len(x[0]))[-1]):
-        return True
-    return False
+OVER_MAX_LENGTH = "OVER_MAX_LENGTH"
+NOT_MATCH = "NOT_MATCH"
+POSSIBLE = "POSSIBLE"
 
 
 # /TAG/
 # ^
 def is_tag_start(s: str) -> (bool, str):
+    if not s:
+        return False, NOT_MATCH
     if s in TAG_START_SYMBOL:
         return True, ""
     elif len(s) > len(sorted(TAG_START_SYMBOL, key=len)[-1]):
         return False, "OVER_MAX_LENGTH"
     else:
-        return False, "NOT_MATCH"
+        s_length = len(s)
+        if s_length >= 1:
+            for sym in TAG_START_SYMBOL:
+                if s[:s_length] == sym[:s_length]:
+                    return False, POSSIBLE
+        return False, NOT_MATCH
 
 
 # /TAG/
@@ -36,17 +36,38 @@ def is_tag_end(s: str):
     if s in TAG_END_SYMBOL:
         return True, ""
     elif len(s) > len(sorted(TAG_END_SYMBOL, key=len)[-1]):
-        return False, "OVER_MAX_LENGTH"
+        return False, OVER_MAX_LENGTH
     else:
-        return False, "NOT_MATCH"
+        s_length = len(s)
+        if s_length >= 1:
+            for sym in TAG_END_SYMBOL:
+                if s[:s_length] == sym[:s_length]:
+                    return False, POSSIBLE
+        return False, NOT_MATCH
+
+
+# /TAG/
+#  ^^^
+def is_tag_name(s: str):
+    if s in TAG_NAME:
+        return True, ""
+    elif len(s) > len(sorted(TAG_NAME, key=len)[-1]):
+        return False, OVER_MAX_LENGTH
+    else:
+        s_length = len(s)
+        if s_length >= 1:
+            for sym in TAG_NAME:
+                if s[:s_length] == sym[:s_length]:
+                    return False, POSSIBLE
+        return False, NOT_MATCH
 
 
 # /TAG/ {
 #       ^
-def is_nested_start(s: str):
-    if len(s) > len(sorted(NESTED_SYMBOL, key=lambda x: len(x[0]))[-1]):
+def is_block_start(s: str):
+    if len(s) > len(sorted(BLOCK_SYMBOL, key=lambda x: len(x[0]))[-1]):
         return False, "OVER_MAX_LENGTH"
-    for sym in NESTED_SYMBOL:
+    for sym in BLOCK_SYMBOL:
         if s == sym[0]:
             return True, ""
     return False, "NOT_MATCH"
@@ -54,10 +75,26 @@ def is_nested_start(s: str):
 
 # /TAG/ { <content> }
 #                   ^
-def is_nested_end(s: str):
-    if len(s) > len(sorted(NESTED_SYMBOL, key=lambda x: len(x[1]))[-1]):
+def is_block_end(s: str):
+    if len(s) > len(sorted(BLOCK_SYMBOL, key=lambda x: len(x[1]))[-1]):
         return False, "OVER_MAX_LENGTH"
-    for sym in NESTED_SYMBOL:
+    for sym in BLOCK_SYMBOL:
         if s == sym[1]:
             return True, ""
     return False, "NOT_MATCH"
+
+
+# MARK *
+#      ^
+def is_mark(s: str):
+    if s in MARK_SYMBOL:
+        return True, ""
+    elif len(s) > len(sorted(MARK_SYMBOL, key=len)[-1]):
+        return False, "OVER_MAX_LENGTH"
+    else:
+        s_length = len(s)
+        if s_length >= 1:
+            for sym in MARK_SYMBOL:
+                if s[:s_length] == sym[:s_length]:
+                    return False, POSSIBLE
+        return False, NOT_MATCH

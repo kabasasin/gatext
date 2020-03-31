@@ -1,31 +1,9 @@
 from typing import Callable, List
 
-from gatex.parser.symbol import TAG_START_SYMBOL, TAG_NAME, TAG_END_SYMBOL
 from gatex.parser.stack import CONTENT_STACK, TAG_STACK, NO_STEP_REG
-from gatex.parser.symbol import isNestedSymbolStarter, isOverLengthThanNestedSymbolStart
-
-"""
-digraph G {
-
-  start -> TAG_START;
-  TAG_START->TAG_NAME;
-  TAG_NAME->TAG_END;
-  TAG_END->NESTED_START;
-  TAG_END->CONTENT;
-  NESTED_START->CONTENT;
-  CONTENT->NESTED_END;
-  CONTENT->TAG_START;
-  NESTED_END->TAG_START;
-  TAG_START->stop;
-  TAG_NAME->stop;
-  TAG_END->stop;
-  NESTED_START->stop;
-  NESTED_END->stop;
-  
-  start [shape=Mdiamond];
-  stop [shape=Msquare];
-}
-"""
+# from gatex.parser.symbol import is_tag_start, is_tag_end
+# from gatex.parser.symbol import TAG_START_SYMBOL, TAG_NAME, TAG_END_SYMBOL
+from gatex.parser.symbol import *
 
 
 class Scanner(object):
@@ -71,10 +49,10 @@ class State(object):
 class StopState(State):
     name = "STOP"
 
-    def transit(self) -> State:
+    def transit(self):
         if CONTENT_STACK.content != "":
             raise Exception("parser failed: {}".format(CONTENT_STACK.content))
-        return None
+        # return None
 
 
 class StartState(State):
@@ -82,41 +60,97 @@ class StartState(State):
     name = "Start"
 
     def transit(self) -> State:
-        return TagStart()
+        return Content()
+
+
+class Content(State):
+    name = "Content"
+    tag = True
+    mark = True
+    # possible = False
+
+    def transit(self) -> State:
+        if CONTENT_STACK.content == chr(0):
+            return StopState()
+        # TAG or Mark
+        if self.tag:
+            res, reason = is_tag_start(CONTENT_STACK.content)
+            # match tag start symbol
+            if res:
+                NO_STEP_REG.set(True)
+                return TagStart()
+            else:
+                # too lang for tag start
+                if reason in [OVER_MAX_LENGTH, NOT_MATCH]:
+                    self.tag = False
+                # not match this time: try mark or eat more rune
+                elif reason == POSSIBLE:
+                    self.tag = True
+                else:
+                    return StopState()
+        if self.mark:
+            res, reason = is_mark(CONTENT_STACK.content)
+            if res:
+                NO_STEP_REG.set(True)
+                # match tag start symbol
+                return Mark()
+            else:
+                # too lang for MARK
+                if reason in [OVER_MAX_LENGTH, NOT_MATCH]:
+                    self.mark = False
+                # not match this time: eat more rune
+                elif reason == POSSIBLE:
+                    self.mark = True
+                else:
+                    return StopState()
+        # not tag or mark
+        # other contents
+        self.content += CONTENT_STACK.pop_all()
+        self.tag = True
+        self.mark = True
+        return self
+
+
+class Mark(State):
+    name = "Mark"
+
+    def transit(self) -> State:
+        self.content = CONTENT_STACK.pop_all()
+        return Content()
 
 
 class TagStart(State):
     name = "TagStart"
 
     def transit(self) -> State:
-        if CONTENT_STACK.content in TAG_START_SYMBOL:
-            self.content = CONTENT_STACK.pop_all()
-            TAG_STACK.append(self.content)
-            return TagReadName()
-        else:
-            if len(CONTENT_STACK.content) > len(sorted(TAG_START_SYMBOL, key=len)[-1]):
-                return StopState()
-            return TagStart()
+        self.content = CONTENT_STACK.pop_all()
+        TAG_STACK.append(self.content)
+        return TagReadName()
 
 
 class TagReadName(State):
     name = "Tag"
 
     def transit(self) -> State:
-        if CONTENT_STACK.content in TAG_NAME:
+        res, reason = is_tag_name(CONTENT_STACK.content)
+        if res:
             self.content = CONTENT_STACK.pop_all()
             return TagEnd()
         else:
-            if len(CONTENT_STACK.content) > len(sorted(TAG_NAME, key=len)[-1]):
+            if reason in [OVER_MAX_LENGTH, NOT_MATCH]:
                 return StopState()
-            return self
+            elif reason == POSSIBLE:
+                return self
+            else:
+                return StopState()
 
 
 class TagEnd(State):
     name = "TagEnd"
 
     def transit(self) -> State:
-        if CONTENT_STACK.content in TAG_END_SYMBOL:
+        res, reason = is_tag_end(CONTENT_STACK.content)
+        if res:
             if TAG_STACK[-1] != CONTENT_STACK.content:
                 return StopState()
             else:
@@ -124,50 +158,32 @@ class TagEnd(State):
                 TAG_STACK.pop(-1)
                 return Content()
         else:
-            if len(CONTENT_STACK.content) > len(sorted(TAG_START_SYMBOL, key=len)[-1]):
+            if reason in [OVER_MAX_LENGTH, NOT_MATCH]:
                 return StopState()
-            return TagStart()
-
-
-class NestedTagStart(State):
-    name = "NestedTagStart"
-
-    def transit(self) -> State:
-        if isNestedSymbolStarter(CONTENT_STACK.content):
-            self.content = CONTENT_STACK.pop_all()
-            TAG_STACK.append(self.content)
-            return NestedTagReadName()
-        else:
-            if isOverLengthThanNestedSymbolStart(CONTENT_STACK.content):
+            elif reason == POSSIBLE:
+                return self
+            else:
                 return StopState()
-            return self
 
 
-class NestedTagReadName(State):
-    name = "NestedTagReadName"
-
-    def transit(self) -> State:
-        if CONTENT_STACK.content in TAG_NAME:
-            # TODO
-            pass
-
-
-class NestedTagEnd(State):
-    pass
-
-
-class Content(State):
-    name = "Content"
-
-    def transit(self) -> State:
-        if CONTENT_STACK.content in TAG_START_SYMBOL:
-            NO_STEP_REG.set(True)
-            return TagStart()
-        elif CONTENT_STACK.content == chr(0):
-            return StopState()
-        else:
-            self.content += CONTENT_STACK.pop_all()
-            return self
+# class BlockStart(State):
+#     name = "NestedTagStart"
+#
+#     def transit(self) -> State:
+#         res, reason = is_block_start(CONTENT_STACK.content)
+#         if res:
+#             self.content = CONTENT_STACK.pop_all()
+#             TAG_STACK.append(self.content)
+#             return NestedTagReadName()
+#         else:
+#             if
+#                 return StopState()
+#             return self
+#
+#
+#
+# class NestedTagEnd(State):
+#     pass
 
 
 class Parse(object):
