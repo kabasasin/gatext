@@ -1,14 +1,17 @@
 from typing import Callable, List
 
-from gatex.parser.stack import CONTENT_STACK, TAG_STACK, NO_STEP_REG, NO_SAVE_REG, SPACE_EAT_REG, FORCE_SAVE_REG
+from gatex.parser.stack import CONTENT_STACK, TAG_STACK, NO_STEP_REG, SPACE_EAT_REG, SAVE_REG
+from gatex.parser.stack import Stack
 # from gatex.parser.symbol import is_tag_start, is_tag_end
 # from gatex.parser.symbol import TAG_START_SYMBOL, TAG_NAME, TAG_END_SYMBOL
 from gatex.parser.symbol import *
+from gatex.parser.ast import Tag
 
 
 class Scanner(object):
     def __init__(self):
         self.file = None
+        self.node_list = []
 
     def load_file(self, file_name):
         self.file = open(file_name)
@@ -31,12 +34,40 @@ class Scanner(object):
         for state in dfa.transit_list:
             if isinstance(state, BlockEnd):
                 block_count -= 1
-            if isinstance(state, (Mark, TagStart, TagReadName, TagEnd)):
-                print("  " * block_count, state, end=" ")
-            else:
-                print("  " * block_count, state)
+            print("  " * block_count, state)
             if isinstance(state, BlockStart):
                 block_count += 1
+        self.node_list = dfa.transit_list
+
+    def ast_build(self):
+        node_stack = []
+        block_stack = []
+        content_stack = []
+
+        read_next_tag = False
+
+        for index, node in enumerate(self.node_list):
+            if isinstance(node, (TagReadName, Mark,)):
+                node_stack.append(node)
+            elif isinstance(node, (TagStart, TagEnd)):
+                pass
+            elif isinstance(node, BlockStart):
+                pass
+            elif isinstance(node, BlockEnd):
+                pass
+            elif isinstance(node, Content):
+                if not node_stack:
+                    # bare text
+                    print(Tag(node_stack[-1].name, node.content))
+                else:
+                    pass
+        # TODO DESIGN
+
+    def tag_build(self):
+        pass
+
+    def block_build(self):
+        pass
 
 
 class State(object):
@@ -70,7 +101,7 @@ class StartState(State):
 
     def transit(self) -> State:
         self.content = "START"
-        NO_SAVE_REG.set(True)
+        # NO_SAVE_REG.set(True)
         return Content()
 
 
@@ -131,7 +162,6 @@ class Content(State):
                 else:
                     return StopState()
         if True in [self.tag, self.mark, self.block_end]:
-            NO_SAVE_REG.set(True)
             return self
         # not tag or mark
         # other contents
@@ -139,6 +169,7 @@ class Content(State):
         self.tag = True
         self.mark = True
         self.block_end = True
+        SAVE_REG.set(True)
         return self
 
 
@@ -151,9 +182,8 @@ class Mark(State):
 
     def transit(self) -> State:
         self.content = CONTENT_STACK.pop_all()
-        NO_SAVE_REG.set(True)
         SPACE_EAT_REG.set(True)
-        FORCE_SAVE_REG.set(True)
+        SAVE_REG.set(True)
         return BlockStart()
 
 
@@ -163,6 +193,7 @@ class TagStart(State):
     def transit(self) -> State:
         self.content = CONTENT_STACK.pop_all()
         TAG_STACK.append(self.content)
+        SAVE_REG.set(True)
         return TagReadName()
 
 
@@ -173,6 +204,7 @@ class TagReadName(State):
         res, reason = is_tag_name(CONTENT_STACK.content)
         if res:
             self.content = CONTENT_STACK.pop_all()
+            SAVE_REG.set(True)
             return TagEnd()
         else:
             if reason in [OVER_MAX_LENGTH, NOT_MATCH]:
@@ -198,14 +230,13 @@ class TagEnd(State):
             else:
                 self.content = CONTENT_STACK.pop_all()
                 TAG_STACK.pop(-1)
-                NO_SAVE_REG.set(True)
                 SPACE_EAT_REG.set(True)
+                SAVE_REG.set(True)
                 return BlockStart()
         else:
             if reason in [OVER_MAX_LENGTH, NOT_MATCH]:
                 return StopState()
             elif reason == POSSIBLE:
-                NO_SAVE_REG.set(True)
                 return self
             else:
                 return StopState()
@@ -219,11 +250,10 @@ class BlockStart(State):
         if res:
             self.content = CONTENT_STACK.pop_all()
             TAG_STACK.append(self.content)
-            FORCE_SAVE_REG.set(True)
+            SAVE_REG.set(True)
             return Content()
         else:
             if reason in [OVER_MAX_LENGTH, NOT_MATCH]:
-                NO_SAVE_REG.set(True)
                 NO_STEP_REG.set(True)
                 return Content()
             elif reason == POSSIBLE:
@@ -239,6 +269,7 @@ class BlockEnd(State):
     def transit(self) -> State:
         self.content = CONTENT_STACK.pop_all()
         TAG_STACK.pop(-1)
+        SAVE_REG.set(True)
         return Content()
 
 
@@ -260,7 +291,7 @@ class Parse(object):
             self.current = self.current.transit()
             if self.current.name == "STOP":
                 self.current.transit()
-                self.save()
+                self.transit_list.append(self.current)
                 return
             self.save()
             self.eat_function()
@@ -276,11 +307,15 @@ class Parse(object):
 
     def save(self):
         # TODO BUILD AST
-        if NO_SAVE_REG.get():
-            NO_SAVE_REG.set(False)
-            return
-        if FORCE_SAVE_REG.get():
-            self.transit_list.append(self.last)
-            FORCE_SAVE_REG.set(False)
-        if self.transit_list[-1].name != self.current.name:
-            self.transit_list.append(self.current)
+        # if NO_SAVE_REG.get():
+        #     NO_SAVE_REG.set(False)
+        #     return
+        # if FORCE_SAVE_REG.get():
+        #     self.transit_list.append(self.last)
+        #     FORCE_SAVE_REG.set(False)
+        if SAVE_REG.get():
+            if self.transit_list[-1].name != self.last.name:
+                self.transit_list.append(self.last)
+            SAVE_REG.set(False)
+        # if self.transit_list[-1].name != self.current.name:
+        #     self.transit_list.append(self.current)
